@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STEM — метод ограничений для MOLP</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0; padding: 0; background: #f5f5f7; color: #222;
+  }
+  header {
+    background: #2c3e50; color: white; padding: 16px 24px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  }
+  header h1 { margin: 0; font-size: 20px; }
+  header p { margin: 4px 0 0; font-size: 13px; opacity: 0.8; }
+  .container {
+    display: grid; grid-template-columns: 400px 1fr;
+    gap: 20px; padding: 20px; max-width: 1400px; margin: 0 auto;
+  }
+  @media (max-width: 900px) { .container { grid-template-columns: 1fr; } }
+  .panel {
+    background: white; border-radius: 8px; padding: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .panel h2 {
+    margin: 0 0 12px; font-size: 16px; color: #2c3e50;
+    border-bottom: 2px solid #3498db; padding-bottom: 6px;
+  }
+  .panel h3 { margin: 16px 0 8px; font-size: 14px; color: #34495e; }
+  label {
+    display: block; margin-top: 10px; font-size: 13px;
+    font-weight: 500; color: #555;
+  }
+  textarea, input, select {
+    width: 100%; padding: 6px 8px; border: 1px solid #ccc;
+    border-radius: 4px; font-family: "Consolas", "Courier New", monospace;
+    font-size: 13px; margin-top: 4px;
+  }
+  textarea { resize: vertical; min-height: 70px; }
+  button {
+    width: 100%; padding: 10px; margin-top: 12px; border: none;
+    border-radius: 4px; background: #3498db; color: white;
+    font-size: 14px; font-weight: 500; cursor: pointer;
+    transition: background 0.2s;
+  }
+  button:hover { background: #2980b9; }
+  button.secondary { background: #27ae60; }
+  button.secondary:hover { background: #229954; }
+  button.danger { background: #e74c3c; }
+  button.danger:hover { background: #c0392b; }
+  .result-section { margin-top: 16px; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px;
+  }
+  th, td { padding: 6px 10px; text-align: right; border: 1px solid #ddd; }
+  th { background: #ecf0f1; font-weight: 600; }
+  tr:nth-child(even) { background: #fafafa; }
+  .label-cell { text-align: left; font-weight: 500; }
+  .info { color: #555; font-size: 13px; margin: 8px 0; }
+  .error {
+    background: #fadbd8; color: #922b21;
+    padding: 10px 14px; border-radius: 4px;
+    margin: 10px 0; font-size: 13px;
+  }
+  .success {
+    background: #d5f5e3; color: #196f3d;
+    padding: 10px 14px; border-radius: 4px;
+    margin: 10px 0; font-size: 13px;
+  }
+  .hidden { display: none; }
+  .badge {
+    display: inline-block; background: #3498db; color: white;
+    padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; margin-left: 6px;
+  }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; color: #3498db; padding: 4px 0; }
+  .change-block {
+  background: #eef7ff; border-left: 4px solid #3498db;
+  padding: 12px 16px; border-radius: 4px; margin: 12px 0;
+}
+.change-block h4 { margin: 0 0 8px; font-size: 14px; color: #1a5276; }
+.change-block p  { margin: 6px 0; font-size: 13px; color: #333; }
+.diff-table { width: auto; font-size: 13px; margin-top: 6px; }
+.diff-table td { padding: 4px 12px; }
+.diff-table th { padding: 4px 12px; }
+.delta-up   { color: #196f3d; font-weight: 700; }
+.delta-down { color: #922b21; font-weight: 700; }
+.delta-zero { color: #7f8c8d; font-weight: 600; }
+.small-mono { font-family: "Consolas", monospace; font-size: 12px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>STEM — метод ограничений для многокритериальной задачи ЛП</h1>
+  <p>Benayoun et al., 1971. Интерактивный поиск компромиссного решения</p>
+</header>
+
+<div class="container">
+  <div class="panel">
+    <h2>1. Исходные данные</h2>
+    <label>A — матрица ограничений (p×n), Ax ≤ b, построчно:</label>
+    <textarea id="input-A" rows="4">1,1
+0,1
+1,0</textarea>
+    <label>b — правая часть (p):</label>
+    <textarea id="input-b" rows="2">10
+6
+8</textarea>
+    <label>C — матрица критериев (k×n), все критерии max:</label>
+    <textarea id="input-C" rows="3">3,2
+1,4</textarea>
+    <label>Имена критериев (через запятую):</label>
+    <input type="text" id="input-names" value="C1,C2">
+    <button onclick="onStart()">Запустить / пересчитать</button>
+    <div id="relax-panel" class="hidden">
+      <h3>2. Фаза уступки</h3>
+      <label>Критерий j*, который ослабляем:</label>
+      <select id="select-jstar"></select>
+      <label>Величина уступки ΔC_j* ≥ 0:</label>
+      <input type="number" id="input-delta" value="1" step="0.1" min="0">
+      <button onclick="onRelax()">Ослабить и продолжить</button>
+      <button class="secondary" onclick="onFinish()">Завершить</button>
+      <button class="danger" onclick="onReset()">Сбросить</button>
+    </div>
+  </div>
+  <div class="panel">
+    <h2>Результаты</h2>
+    <div id="output-root">
+      <p class="info">Введите данные слева и нажмите «Запустить / пересчитать».</p>
+    </div>
+  </div>
+</div>
+
+<script>
+// =====================================================================
+// LP-СОЛВЕР: max c·x, s.t. A·x ≤ b, x ≥ 0
+// Двухфазный симплекс-метод. Обрабатывает отрицательные RHS (b_i < 0).
+// =====================================================================
+function solveLP(c, A, b) {
+  const EPS = 1e-9;
+  const n = c.length;
+  const m = A.length;
+  const negRows = [];
+  for (let i = 0; i < m; i++) if (b[i] < -EPS) negRows.push(i);
+  const nArt = negRows.length;
+  const totalVars = n + m + nArt;
+  const slackCol = i => n + i;
+  let artCounter = 0;
+  const artCol = new Array(m).fill(-1);
+  for (const i of negRows) { artCol[i] = n + m + artCounter++; }
+
+  const T = [];
+  for (let i = 0; i < m; i++) {
+    const row = new Array(totalVars + 1).fill(0);
+    if (b[i] >= -EPS) {
+      for (let j = 0; j < n; j++) row[j] = A[i][j];
+      row[slackCol(i)] = 1;
+      row[totalVars] = Math.max(b[i], 0);
+    } else {
+      for (let j = 0; j < n; j++) row[j] = -A[i][j];
+      row[slackCol(i)] = -1;
+      row[artCol[i]] = 1;
+      row[totalVars] = -b[i];
+    }
+    T.push(row);
+  }
+  const basis = new Array(m);
+  for (let i = 0; i < m; i++) basis[i] = (b[i] >= -EPS) ? slackCol(i) : artCol[i];
+
+  const objRow = new Array(totalVars + 1).fill(0);
+
+  function setObjective(cVec) {
+    for (let j = 0; j <= totalVars; j++) {
+      let val = (j < totalVars) ? cVec[j] : 0;
+      for (let i = 0; i < m; i++) val -= cVec[basis[i]] * T[i][j];
+      objRow[j] = val;
+    }
+  }
+  function pivot(row, col) {
+    const p = T[row][col];
+    for (let j = 0; j <= totalVars; j++) T[row][j] /= p;
+    for (let i = 0; i < m; i++) {
+      if (i === row) continue;
+      const f = T[i][col];
+      if (Math.abs(f) > 1e-14)
+        for (let j = 0; j <= totalVars; j++) T[i][j] -= f * T[row][j];
+    }
+    const f = objRow[col];
+    if (Math.abs(f) > 1e-14)
+      for (let j = 0; j <= totalVars; j++) objRow[j] -= f * T[row][j];
+    basis[row] = col;
+  }
+  function runSimplex(forbidden) {
+    for (let iter = 0; iter < 10000; iter++) {
+      let enterCol = -1, bestVal = EPS;
+      for (let j = 0; j < totalVars; j++) {
+        if (forbidden && forbidden.has(j)) continue;
+        if (objRow[j] > bestVal) { bestVal = objRow[j]; enterCol = j; }
+      }
+      if (enterCol === -1) return 'optimal';
+      let leaveRow = -1, bestRatio = Infinity;
+      for (let i = 0; i < m; i++) {
+        if (T[i][enterCol] > EPS) {
+          const r = T[i][totalVars] / T[i][enterCol];
+          if (r < bestRatio - 1e-12) { bestRatio = r; leaveRow = i; }
+        }
+      }
+      if (leaveRow === -1) return 'unbounded';
+      pivot(leaveRow, enterCol);
+    }
+    return 'iteration_limit';
+  }
+
+  if (nArt > 0) {
+    const c1 = new Array(totalVars).fill(0);
+    for (const i of negRows) c1[artCol[i]] = -1;
+    setObjective(c1);
+    const r1 = runSimplex(null);
+    if (r1 !== 'optimal') return { status: r1 };
+    if (objRow[totalVars] > 1e-7) return { status: 'infeasible' };
+    for (let i = 0; i < m; i++) {
+      if (basis[i] >= n + m) {
+        for (let j = 0; j < n + m; j++) {
+          if (Math.abs(T[i][j]) > 1e-9) { pivot(i, j); break; }
+        }
+      }
+    }
+  }
+
+  const c2 = new Array(totalVars).fill(0);
+  for (let j = 0; j < n; j++) c2[j] = c[j];
+  setObjective(c2);
+  const forbidden = new Set();
+  for (let i = 0; i < m; i++) if (artCol[i] >= 0) forbidden.add(artCol[i]);
+  const r2 = runSimplex(forbidden);
+  if (r2 !== 'optimal') return { status: r2 };
+
+  const x = new Array(n).fill(0);
+  for (let i = 0; i < m; i++)
+    if (basis[i] < n) x[basis[i]] = Math.max(T[i][totalVars], 0);
+  const value = c.reduce((s, ci, j) => s + ci * x[j], 0);
+  return { status: 'optimal', x, value };
+}
+
+// =====================================================================
+// Класс STEM
+// =====================================================================
+class STEM {
+  constructor(A, b, C) {
+    this.A = A.map(r => r.slice());
+    this.b = b.slice();
+    this.C = C.map(r => r.slice());
+    this.p = A.length;
+    this.n = A[0].length;
+    this.k = C.length;
+    this.extra = [];
+    this.pi = null; this.M = null; this.m = null;
+    this.payoff = null; this.x = null; this.z = null;
+    this.cycle = 0; this.history = [];
+  }
+  _solveWithExtra(c) {
+    const A = this.A.map(r => r.slice());
+    const b = this.b.slice();
+    for (const e of this.extra) { A.push(e.coeff.slice()); b.push(e.rhs); }
+    return solveLP(c, A, b);
+  }
+  buildPayoff() {
+    const k = this.k;
+    const table = [];
+    for (let j = 0; j < k; j++) {
+      const res = this._solveWithExtra(this.C[j]);
+      if (res.status !== 'optimal')
+        throw new Error(`LP для C${j+1}: ${res.status}. Проверьте допустимость и ограниченность.`);
+      const row = [];
+      for (let i = 0; i < k; i++)
+        row.push(this.C[i].reduce((s, ci, idx) => s + ci * res.x[idx], 0));
+      table.push(row);
+    }
+    this.payoff = table;
+    this.M = table.map((r, j) => r[j]);
+    this.m = [];
+    for (let j = 0; j < k; j++) this.m.push(Math.min(...table.map(r => r[j])));
+    const alpha = [];
+    for (let j = 0; j < k; j++) {
+      const nc = Math.sqrt(this.C[j].reduce((s, v) => s + v*v, 0));
+      const den = Math.abs(this.M[j]) > 1e-12 ? Math.abs(this.M[j]) : 1;
+      let a = Math.max((this.M[j] - this.m[j]) / den, 0);
+      if (nc > 1e-12) a *= 1 / nc;
+      alpha.push(a);
+    }
+    const sumA = alpha.reduce((s, v) => s + v, 0);
+    this.pi = sumA > 1e-12 ? alpha.map(v => v / sumA) : new Array(k).fill(1/k);
+  }
+  solveMinimax() {
+    const { n, k } = this;
+    const c = new Array(n).fill(0).concat([-1]);
+    const A = [], b = [];
+    for (let j = 0; j < k; j++) {
+      if (this.pi[j] < 1e-12) continue;
+      const row = this.C[j].map(v => -this.pi[j] * v);
+      row.push(-1);
+      A.push(row); b.push(-this.pi[j] * this.M[j]);
+    }
+    for (let i = 0; i < this.p; i++) {
+      A.push(this.A[i].slice().concat([0])); b.push(this.b[i]);
+    }
+    for (const e of this.extra) {
+      A.push(e.coeff.slice().concat([0])); b.push(e.rhs);
+    }
+    const res = solveLP(c, A, b);
+    if (res.status !== 'optimal') return null;
+    const x = res.x.slice(0, n);
+    const z = [];
+    for (let i = 0; i < k; i++)
+      z.push(this.C[i].reduce((s, ci, idx) => s + ci * x[idx], 0));
+    return { x, z };
+  }
+  start() {
+    this.buildPayoff();
+    this.cycle = 1;
+    const res = this.solveMinimax();
+    if (!res) throw new Error('MINIMAX на первом цикле не решился.');
+    this.x = res.x; this.z = res.z;
+    this.history = [this._snapshot()];
+  }
+  relax(jStar, delta) {
+  if (jStar < 0 || jStar >= this.k) throw new Error('Неверный j*.');
+  if (delta < 0) throw new Error('Δ должно быть ≥ 0.');
+
+  const old = {
+    extra: this.extra.map(e => ({ coeff: e.coeff.slice(), rhs: e.rhs })),
+    pi: this.pi.slice(),
+    cycle: this.cycle,
+    x: this.x.slice(),
+    z: this.z.slice(),
+    history: this.history.slice(),
+  };
+
+  const zCur = this.z;
+  for (let i = 0; i < this.k; i++) {
+    const rhs = -(zCur[i] - (i === jStar ? delta : 0));
+    this.extra.push({ coeff: this.C[i].map(v => -v), rhs });
+  }
+  this.pi[jStar] = 0;
+  this.cycle += 1;
+
+  const res = this.solveMinimax();
+  if (!res) {
+    this.extra = old.extra; this.pi = old.pi; this.cycle = old.cycle;
+    this.x = old.x; this.z = old.z; this.history = old.history;
+    throw new Error('После уступки задача стала недопустимой. ' +
+                    'Уменьшите Δ или выберите другой критерий.');
+  }
+
+  this.x = res.x;
+  this.z = res.z;
+
+  // Снимок с информацией о выполненной уступке
+  this.history.push({
+    cycle: this.cycle,
+    x: this.x.slice(),
+    z: this.z.slice(),
+    pi: this.pi.slice(),
+    relaxInfo: {
+      jStar: jStar,
+      delta: delta,
+      prevCycle: old.cycle,
+      prevX: old.x.slice(),
+      prevZ: old.z.slice(),
+      prevPi: old.pi.slice(),
+    },
+  });
+}
+  _snapshot() {
+    return { cycle: this.cycle, x: this.x.slice(), z: this.z.slice(), pi: this.pi.slice() };
+  }
+}
+
+// =====================================================================
+// Парсеры
+// =====================================================================
+function parseMatrix(text) {
+  return text.trim().split(/\r?\n/).filter(l => l.trim()).map(line =>
+    line.replace(/;/g, ',').split(',').filter(t => t.trim()).map(t => parseFloat(t))
+  );
+}
+function parseVector(text) {
+  return text.replace(/[\n;]/g, ',').split(',').filter(t => t.trim()).map(t => parseFloat(t));
+}
+
+// =====================================================================
+// UI
+// =====================================================================
+let state = { stem: null, names: [], finished: false };
+const fmt = v => (Math.abs(v) < 1e-10 ? 0 : v).toFixed(4);
+
+function renderOutput() {
+  const root = document.getElementById('output-root');
+  if (!state.stem) {
+    root.innerHTML = '<p class="info">Введите данные слева и нажмите «Запустить / пересчитать».</p>';
+    return;
+  }
+  const stm = state.stem, names = state.names;
+  let html = '';
+
+  html += state.finished
+    ? '<div class="success"><b>Поиск завершён.</b> Решение принято ЛПР.</div>'
+    : `<p class="info">Цикл <span class="badge">${stm.cycle}</span></p>`;
+
+  // ----- Pay-off table -----
+  html += '<div class="result-section"><h3>Pay-off table</h3><table><tr><th>Решение</th>';
+  html += names.map(n => `<th>${n}</th>`).join('') + '</tr>';
+  for (let j = 0; j < stm.k; j++) {
+    html += `<tr><td class="label-cell">max ${names[j]}</td>`;
+    for (let i = 0; i < stm.k; i++) html += `<td>${fmt(stm.payoff[j][i])}</td>`;
+    html += '</tr>';
+  }
+  html += '</table></div>';
+
+  // ----- Идеальная точка и веса -----
+  html += '<div class="result-section"><h3>Идеальная точка и веса</h3><table>';
+  html += '<tr><th>Критерий</th><th>M_j</th><th>m_j</th><th>π_j</th></tr>';
+  for (let j = 0; j < stm.k; j++)
+    html += `<tr><td class="label-cell">${names[j]}</td><td>${fmt(stm.M[j])}</td><td>${fmt(stm.m[j])}</td><td>${fmt(stm.pi[j])}</td></tr>`;
+  html += '</table></div>';
+
+  // ----- Текущее решение -----
+  html += `<div class="result-section"><h3>Текущее решение (цикл ${stm.cycle})</h3>
+    <p class="info"><b>x</b> = (${stm.x.map(fmt).join(', ')})</p>
+    <table><tr><th>Критерий</th><th>z(x)</th><th>M_j</th><th>M_j − z(x)</th></tr>`;
+  for (let j = 0; j < stm.k; j++)
+    html += `<tr><td class="label-cell">${names[j]}</td><td>${fmt(stm.z[j])}</td><td>${fmt(stm.M[j])}</td><td>${fmt(stm.M[j] - stm.z[j])}</td></tr>`;
+  html += '</table></div>';
+
+  // ----- Блок "Что изменилось в цикле N" -----
+  if (stm.cycle > 1) {
+    const last = stm.history[stm.history.length - 1];
+    if (last && last.relaxInfo) {
+      const r = last.relaxInfo;
+      const sign = v => v > 1e-6 ? '+' : '';
+      const cls  = v => Math.abs(v) < 1e-6 ? 'delta-zero'
+                       : (v > 0 ? 'delta-up' : 'delta-down');
+
+      html += `<div class="change-block">
+        <h4>Что изменилось в цикле ${stm.cycle}</h4>
+        <p>Ослаблен критерий <b>${names[r.jStar]}</b> на
+           Δ = <b>${fmt(r.delta)}</b>.
+           Вес π<sub>${r.jStar + 1}</sub> обнулён.</p>
+        <table class="diff-table">
+          <tr><th>Критерий</th>
+              <th>Было (цикл ${r.prevCycle})</th>
+              <th>Стало (цикл ${stm.cycle})</th>
+              <th>Δ</th></tr>`;
+      for (let j = 0; j < stm.k; j++) {
+        const d = stm.z[j] - r.prevZ[j];
+        html += `<tr>
+          <td class="label-cell">${names[j]}</td>
+          <td>${fmt(r.prevZ[j])}</td>
+          <td>${fmt(stm.z[j])}</td>
+          <td class="${cls(d)}">${sign(d)}${fmt(d)}</td>
+        </tr>`;
+      }
+      html += `</table>
+        <p class="small-mono">
+          <b>x</b>: (${r.prevX.map(fmt).join(', ')}) →
+                 (${stm.x.map(fmt).join(', ')})<br>
+          <b>π</b>: (${r.prevPi.map(fmt).join(', ')}) →
+                 (${stm.pi.map(fmt).join(', ')})
+        </p>
+      </div>`;
+    }
+  }
+
+  // ----- История циклов -----
+  if (stm.history.length > 1) {
+    html += `<details open><summary>История циклов (${stm.history.length})</summary>
+      <table>
+        <tr><th>Цикл</th><th>Действие</th><th>x</th><th>z</th><th>π</th></tr>`;
+    for (const h of stm.history) {
+      const action = h.relaxInfo
+        ? `−${names[h.relaxInfo.jStar]} на Δ=${fmt(h.relaxInfo.delta)}`
+        : 'начальный MINIMAX';
+      html += `<tr>
+        <td>${h.cycle}</td>
+        <td style="text-align:left;font-size:12px">${action}</td>
+        <td style="text-align:left">(${h.x.map(fmt).join(', ')})</td>
+        <td style="text-align:left">(${h.z.map(fmt).join(', ')})</td>
+        <td style="text-align:left">(${h.pi.map(fmt).join(', ')})</td>
+      </tr>`;
+    }
+    html += '</table></details>';
+  }
+
+  root.innerHTML = html;
+}
+
+function populateSelect() {
+  const sel = document.getElementById('select-jstar');
+  sel.innerHTML = '';
+  state.names.forEach((n, i) => {
+    const o = document.createElement('option');
+    o.value = i; o.textContent = `${i}: ${n}`;
+    sel.appendChild(o);
+  });
+}
+
+function onStart() {
+  const root = document.getElementById('output-root');
+  try {
+    const A = parseMatrix(document.getElementById('input-A').value);
+    const b = parseVector(document.getElementById('input-b').value);
+    const C = parseMatrix(document.getElementById('input-C').value);
+    if (!A.length || !C.length) throw new Error('Матрица пуста.');
+    if (A[0].length !== C[0].length) throw new Error('Число переменных в A и C не совпадает.');
+    if (A.length !== b.length) throw new Error('Число строк A и длина b не совпадают.');
+    let names = document.getElementById('input-names').value
+      .split(',').map(s => s.trim()).filter(s => s);
+    if (names.length !== C.length) names = C.map((_, i) => `C${i+1}`);
+    const stem = new STEM(A, b, C);
+    stem.start();
+    state = { stem, names, finished: false };
+    populateSelect();
+    document.getElementById('relax-panel').classList.remove('hidden');
+    renderOutput();
+  } catch (e) {
+    root.innerHTML = `<div class="error"><b>Ошибка:</b> ${e.message}</div>`;
+  }
+}
+
+function onRelax() {
+  try {
+    const j = parseInt(document.getElementById('select-jstar').value);
+    const delta = parseFloat(document.getElementById('input-delta').value);
+    if (!isFinite(delta)) throw new Error('Введите число для Δ.');
+    state.stem.relax(j, delta);
+    renderOutput();
+  } catch (e) {
+    const r = document.getElementById('output-root');
+    r.querySelectorAll('.error').forEach(el => el.remove());
+    const div = document.createElement('div');
+    div.className = 'error';
+    div.innerHTML = `<b>Ошибка:</b> ${e.message}`;
+    r.insertBefore(div, r.firstChild);
+  }
+}
+function onFinish() { state.finished = true; renderOutput(); }
+function onReset() {
+  state = { stem: null, names: [], finished: false };
+  document.getElementById('relax-panel').classList.add('hidden');
+  renderOutput();
+}
+</script>
+</body>
+</html>
